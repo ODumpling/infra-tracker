@@ -27,6 +27,16 @@ pnpm tauri build        # → src-tauri/target/release/bundle/{macos,dmg}
 INFRA_TEST_HOST=pve cargo test --manifest-path src-tauri/Cargo.toml -- --ignored   # live ssh collector test
 ```
 
+## Releases & updates
+- CI (`.github/workflows/ci.yml`): tsc/vite build, clippy, tests on every push/PR.
+- `scripts/release.sh 0.2.0 && git push --follow-tags` → `release.yml` builds a universal macOS dmg + signed updater bundle and publishes a GitHub release with `latest.json`.
+- App checks `releases/latest/download/latest.json` on launch and every 6 h; update button appears in the sidebar and Settings.
+- Releases are Developer ID signed and notarized; local `pnpm tauri build` is ad-hoc signed.
+- Repo secrets:
+  - `TAURI_SIGNING_PRIVATE_KEY` (`~/.tauri/infra_tracker_updater.key`), `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — updater signing. Losing the key means existing installs can't update.
+  - `APPLE_CERTIFICATE` (base64 Developer ID Application `.p12`), `APPLE_CERTIFICATE_PASSWORD`
+  - `APPLE_ID`, `APPLE_PASSWORD` (app-specific password from account.apple.com) — notarization
+
 ## Layout
 - `src-tauri/collectors/{linux.sh,macos.sh,windows.ps1}` — remote collectors; print raw command output as `@@infra@@ <section>` blocks (run one by hand: `ssh host 'sudo sh -s' < src-tauri/collectors/linux.sh`)
 - `src-tauri/src/collect.rs` — OS detection, ssh, parses sections into a snapshot

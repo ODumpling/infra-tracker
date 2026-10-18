@@ -1,3 +1,6 @@
+import { getVersion } from "@tauri-apps/api/app";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { api } from "./api";
 import { diff, exposedPorts, findings, isWildcard } from "./analyze";
 import { ago, bytes, date, duration, esc, pct } from "./fmt";
@@ -14,6 +17,10 @@ const compareCache: Record<string, Snapshot> = {};
 let autoTimer: number | undefined;
 /** Add-host form: address/user → probe → editable host prefilled from the scan. */
 let draft: { addr: string; user: string; probing: boolean; snapshot?: Snapshot; host?: Host } = { addr: "", user: "", probing: false };
+let version = "";
+/** Pending update from GitHub releases (latest.json); `progress` set while downloading. */
+let update: Update | null = null;
+let progress: string | undefined;
 
 const $app = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -98,6 +105,7 @@ function render() {
       ${roots.map((h) => navItem(h, 0)).join("")}
       <button class="nav add ${view === "add" ? "active" : ""}" data-view="add">+ Add host</button>
       <div class="spacer"></div>
+      ${update ? `<button class="nav update" data-action="install-update" ${progress ? "disabled" : ""}>${progress ?? `Update to ${esc(update.version)}`}</button>` : ""}
       <button class="nav ${view === "settings" ? "active" : ""}" data-view="settings">Settings</button>
     </aside>
     <main>
@@ -340,6 +348,9 @@ function settings() {
       ${card("Data", `
         <p class="small muted">Scans run <code>ssh &lt;target&gt;</code> using your ~/.ssh/config and pipe a shell (Linux/macOS, as root or via passwordless <code>sudo -n</code>) or PowerShell (Windows) collector script. Nothing is installed on hosts.</p>
         <button data-action="reveal">Show data folder</button>`)}
+      ${card("Updates", `
+        <p class="small muted">Version ${esc(version)}. Checks GitHub releases on launch and every 6 h.</p>
+        ${update ? `<button class="primary" data-action="install-update" ${progress ? "disabled" : ""}>${progress ?? `Install ${esc(update.version)} &amp; restart`}</button>` : `<button data-action="check-update">Check for updates</button>`}`)}
       ${card("Hosts", `
         <p class="small muted">JSON array. Fields: <code>id</code>, <code>name</code>, <code>ssh</code> (alias or user@host), optional <code>parent</code> (host id), <code>role</code>.</p>
         <textarea id="hosts" class="code" spellcheck="false">${esc(JSON.stringify(config.hosts, null, 2))}</textarea>`, "wide")}
@@ -371,6 +382,35 @@ function setupAutoScan() {
   if (config.scan_interval_min > 0) autoTimer = window.setInterval(scanAll, config.scan_interval_min * 60_000);
 }
 
+async function checkUpdate(manual = false) {
+  try {
+    update = await check();
+    if (manual && !update) toast("Up to date");
+    render();
+  } catch (e) {
+    if (manual) toast(`Update check failed: ${e}`, true);
+  }
+}
+
+async function installUpdate() {
+  if (!update || progress) return;
+  let total = 0, done = 0;
+  progress = "Downloading…";
+  render();
+  try {
+    await update.downloadAndInstall((ev) => {
+      if (ev.event === "Started") total = ev.data.contentLength ?? 0;
+      else if (ev.event === "Progress") { done += ev.data.chunkLength; if (total) { progress = `Downloading ${pct(done, total)}%`; render(); } }
+      else progress = "Restarting…";
+    });
+    await relaunch();
+  } catch (e) {
+    progress = undefined;
+    toast(`Update failed: ${e}`, true);
+    render();
+  }
+}
+
 let notesTimer: number | undefined;
 
 document.addEventListener("keydown", (e) => {
@@ -392,6 +432,8 @@ document.addEventListener("click", async (e) => {
     case "probe": return probe();
     case "add-host": return addHost();
     case "add-cancel": draft = { addr: "", user: "", probing: false }; render(); return;
+    case "check-update": return checkUpdate(true);
+    case "install-update": return installUpdate();
     case "reveal": return api.reveal().catch((err) => toast(String(err), true));
     case "export":
       try {
@@ -464,6 +506,9 @@ setInterval(() => {
     [config, state, notes] = await Promise.all([api.getConfig(), api.loadState(), api.getNotes()]);
     setupAutoScan();
     render();
+    version = await getVersion().catch(() => "");
+    checkUpdate();
+    setInterval(checkUpdate, 6 * 3600_000);
   } catch (e) {
     $app.innerHTML = `<div class="banner crit">Failed to start: ${esc(e)}</div>`;
   }
