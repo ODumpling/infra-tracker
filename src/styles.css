@@ -113,4 +113,5 @@ textarea.code { min-height: 300px; font: 12px/1.45 ui-monospace, SFMono-Regular,
 .toast.error { background: var(--crit); color: #fff; }
 
 .nav.add { color: var(--muted); }
+.nav.update { color: var(--accent); font-weight: 600; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
