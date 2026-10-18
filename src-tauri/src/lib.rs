@@ -52,10 +52,31 @@ fn default_config(app: &AppHandle) -> Config {
     }
 }
 
+/// All app data (db, config, exports) lives in `~/.infratracker`.
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = app.path().home_dir().map_err(|e| e.to_string())?.join(".infratracker");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+/// One-time move of files from the old Tauri app data dir (e.g. `~/Library/Application Support/<id>`).
+/// Only known files are moved, and never over an existing file in the new dir.
+fn migrate_old_data_dir(app: &AppHandle, dir: &Path) -> Result<(), String> {
+    let Ok(old) = app.path().app_data_dir() else { return Ok(()) };
+    if old == dir {
+        return Ok(());
+    }
+    const FILES: &[&str] = &[
+        "infra.db", "infra.db-wal", "infra.db-shm", "config.json", "INVENTORY.md",
+        "snapshots", "notes.json", "snapshots.imported", "notes.json.imported",
+    ];
+    for name in FILES {
+        let (src, dest) = (old.join(name), dir.join(name));
+        if src.exists() && !dest.exists() {
+            fs::rename(&src, &dest).map_err(|e| format!("moving {} to {}: {e}", src.display(), dest.display()))?;
+        }
+    }
+    Ok(())
 }
 
 fn config_file(app: &AppHandle) -> Result<PathBuf, String> {
@@ -356,7 +377,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let conn = open_db(&data_dir(app.handle())?)?;
+            let dir = data_dir(app.handle())?;
+            migrate_old_data_dir(app.handle(), &dir)?;
+            let conn = open_db(&dir)?;
             app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
