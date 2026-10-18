@@ -5,7 +5,7 @@ Small Tauri v2 desktop app (~3MB) that inventories homelab/VPS hosts over SSH an
 ## How it works
 - Runs `ssh <target>` (uses `~/.ssh/config` + 1Password agent) and pipes `src-tauri/collector.py` to remote `python3` as root (direct or `sudo -n`). Nothing installed on hosts.
 - Collects: OS/kernel/uptime, CPU/RAM/disks, SMART, addresses, listening ports, systemd services (+ user units), Docker containers/compose, Tailscale (IPs, routes, serve), firewall, pending updates/reboot, Proxmox guests/storage/backups/firewall.
-- Each scan is saved as a JSON snapshot (`~/Library/Application Support/dev.otisdaley.infratracker/snapshots/<host>/<ts>.json`).
+- Each scan is saved as a JSON snapshot (`~/Library/Application Support/dev.dufflebear.infratracker/snapshots/<host>/<ts>.json`).
 - UI computes **findings** (rules in `src/analyze.ts`) and **changes** vs previous/any older snapshot.
 - Per-host notes; **Export markdown** writes `INVENTORY.md` to the docs folder (default `~/Code/Infrastructure`).
 - Optional auto-scan interval (while app is open).
@@ -30,3 +30,6 @@ INFRA_TEST_HOST=pve cargo test --manifest-path src-tauri/Cargo.toml -- --ignored
 - `src-tauri/src/lib.rs` — commands: config, scan, snapshots, notes, export
 - `scripts/vm-scan.sh` — standalone ad-hoc text scan (`ssh user@host "sudo bash -s" < scripts/vm-scan.sh`)
 - `src/analyze.ts` — findings + diff rules · `src/main.ts` — UI · `src/markdown.ts` — export
+
+## License
+MIT — see [LICENSE](LICENSE).

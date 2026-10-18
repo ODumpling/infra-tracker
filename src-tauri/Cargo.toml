@@ -3,6 +3,7 @@ name = "infra-tracker"
 version = "0.1.0"
 description = "Homelab inventory tracker"
 authors = ["Otis Daley"]
+license = "MIT"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
