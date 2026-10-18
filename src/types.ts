@@ -21,6 +21,7 @@ export interface Guest {
 }
 
 export interface Snapshot {
+  platform?: "linux" | "macos" | "windows"; // missing in old snapshots (always linux)
   collected_at: number;
   hostname: string;
   os: string;

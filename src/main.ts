@@ -257,7 +257,7 @@ function hostView(id: string) {
 function addView() {
   const { snapshot: s, host: h } = draft;
   const step1 = card("Scan a new machine", `
-    <p class="small muted">Enter an IP, hostname or ~/.ssh/config alias. Needs key-based ssh, <code>python3</code> and root or passwordless sudo. New host keys are trusted on first use.</p>
+    <p class="small muted">Enter an IP, hostname or ~/.ssh/config alias. Linux/macOS: key-based ssh and root or passwordless sudo. Windows: OpenSSH server and an admin account. New host keys are trusted on first use.</p>
     <div class="row">
       <label class="field">Address<input data-draft="addr" value="${esc(draft.addr)}" placeholder="192.168.1.20" autofocus></label>
       <label class="field">SSH user <input data-draft="user" value="${esc(draft.user)}" placeholder="default"></label>
@@ -338,7 +338,7 @@ function settings() {
         </label>
         <label class="field">Snapshots kept per host<input id="keep" type="number" min="2" value="${config.keep_snapshots}"></label>`)}
       ${card("Data", `
-        <p class="small muted">Scans run <code>ssh &lt;target&gt;</code> using your ~/.ssh/config and pipe a Python collector to <code>python3</code> (as root, or via passwordless <code>sudo -n</code>). Nothing is installed on hosts.</p>
+        <p class="small muted">Scans run <code>ssh &lt;target&gt;</code> using your ~/.ssh/config and pipe a shell (Linux/macOS, as root or via passwordless <code>sudo -n</code>) or PowerShell (Windows) collector script. Nothing is installed on hosts.</p>
         <button data-action="reveal">Show data folder</button>`)}
       ${card("Hosts", `
         <p class="small muted">JSON array. Fields: <code>id</code>, <code>name</code>, <code>ssh</code> (alias or user@host), optional <code>parent</code> (host id), <code>role</code>.</p>
