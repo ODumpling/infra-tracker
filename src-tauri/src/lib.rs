@@ -2,17 +2,14 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-const COLLECTOR: &str = include_str!("../collector.py");
-// Runs the collector as root: directly if already root, otherwise via passwordless sudo.
-const REMOTE_CMD: &str = r#"if [ "$(id -u)" = 0 ]; then exec python3 -; else exec sudo -n python3 -; fi"#;
+mod collect;
+use collect::collect;
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Host {
@@ -274,31 +271,6 @@ fn add_host(app: AppHandle, db: State<'_, Db>, host: Host, snapshot: Value) -> R
     write_json(&config_file(&app)?, &cfg)
 }
 
-/// `accept_new`: trust-on-first-use for hosts not yet in known_hosts (only for explicit add-host probes).
-fn collect(dest: &str, accept_new: bool) -> Result<Value, String> {
-    let mut child = Command::new("ssh")
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3"])
-        .args(if accept_new { &["-o", "StrictHostKeyChecking=accept-new"][..] } else { &[] })
-        .arg("--")
-        .arg(dest)
-        .arg(REMOTE_CMD)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to run ssh: {e}"))?;
-    child.stdin.take().ok_or("no stdin")?.write_all(COLLECTOR.as_bytes()).map_err(|e| e.to_string())?;
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        if err.contains("agent") && (err.contains("communication with agent failed") || err.contains("agent refused")) {
-            return Err(format!("{err}\n(SSH agent refused — is 1Password unlocked?)"));
-        }
-        return Err(if err.is_empty() { format!("ssh exited with {}", out.status) } else { err });
-    }
-    serde_json::from_slice(&out.stdout).map_err(|e| format!("bad collector output: {e}"))
-}
-
 /// Latest + previous snapshot and last error for every configured host.
 #[tauri::command]
 fn load_state(app: AppHandle, db: State<'_, Db>) -> Result<Map<String, Value>, String> {
@@ -423,7 +395,7 @@ mod tests {
     #[ignore]
     fn collect_live() {
         let host = std::env::var("INFRA_TEST_HOST").unwrap_or_else(|_| "pve".into());
-        let snap = super::collect(&host, false).expect("collect failed");
+        let snap = collect(&host, false).expect("collect failed");
         assert!(snap["hostname"].is_string());
         assert!(snap["disks"].as_array().is_some_and(|d| !d.is_empty()));
     }
