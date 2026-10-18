@@ -14,7 +14,8 @@ let view = "overview"; // "overview" | "settings" | host id
 const scanning = new Set<string>();
 const compareWith: Record<string, number | undefined> = {};
 const compareCache: Record<string, Snapshot> = {};
-let autoTimer: number | undefined;
+/** Local time (s) of each host's last scan attempt, for monitoring. */
+const lastScan: Record<string, number> = {};
 /** Add-host form: address/user → probe → editable host prefilled from the scan. */
 let draft: { addr: string; user: string; probing: boolean; snapshot?: Snapshot; host?: Host } = { addr: "", user: "", probing: false };
 let version = "";
@@ -25,6 +26,14 @@ let progress: string | undefined;
 const $app = document.querySelector<HTMLDivElement>("#app")!;
 
 // ---------- helpers ----------
+
+const MONITOR_OPTIONS = [5, 10, 15, 30, 60];
+const minLabel = (m: number) => (m === 0 ? "Off" : m < 60 ? `${m} min` : `${m / 60} h`);
+/** Effective monitoring interval in minutes (0 = off). */
+const monitorMin = (h: Host) => h.monitor_min ?? config.scan_interval_min;
+const monitorSelect = (attrs: string, value: number | null | undefined) =>
+  `<select ${attrs}><option value="" ${value == null ? "selected" : ""}>Default (${minLabel(config.scan_interval_min)})</option>${[0, ...MONITOR_OPTIONS]
+    .map((m) => `<option value="${m}" ${value === m ? "selected" : ""}>${minLabel(m)}</option>`).join("")}</select>`;
 
 const hostFindings = (id: string) => {
   const st = state[id];
@@ -144,7 +153,7 @@ function overview() {
       <div class="hc-foot">
         ${f.filter((x) => x.severity === "crit").length ? `<span class="pill crit">${f.filter((x) => x.severity === "crit").length} critical</span>` : ""}
         ${f.filter((x) => x.severity === "warn").length ? `<span class="pill warn">${f.filter((x) => x.severity === "warn").length} warnings</span>` : ""}
-        <span class="muted small">${ago(s?.collected_at)}</span>
+        <span class="muted small">${monitorMin(h) ? `every ${minLabel(monitorMin(h))} · ` : ""}${ago(s?.collected_at)}</span>
       </div>
     </button>`;
   });
@@ -181,6 +190,7 @@ function hostView(id: string) {
         <div class="muted">${esc(h.role ?? "")} · <code>ssh ${esc(h.ssh)}</code></div>
         <div class="muted small">${s ? `Scanned ${date(s.collected_at)} · ${st.history.length} snapshots` : "Never scanned"}</div>
       </div>
+      <label class="monitor muted small">Monitor ${monitorSelect(`data-action="monitor" data-id="${esc(id)}"`, h.monitor_min)}</label>
       <button class="primary" data-action="scan" data-id="${esc(id)}" ${scanning.has(id) ? "disabled" : ""}>${scanning.has(id) ? "Scanning…" : "Scan now"}</button>
     </div>
     ${st.error ? `<div class="banner crit">Last scan failed ${ago(st.error.at)}: ${esc(st.error.message)}</div>` : ""}`;
@@ -297,6 +307,7 @@ function addView() {
       <select data-host="parent"><option value="">None</option>${config.hosts.map((x) => `<option value="${esc(x.id)}" ${x.id === h.parent ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
     </label>
     <label class="field">Role<input data-host="role" value="${esc(h.role ?? "")}"></label>
+    <label class="field">Monitor ${monitorSelect(`data-host="monitor_min"`, h.monitor_min)}</label>
     <div class="actions right"><button data-action="add-cancel">Cancel</button><button class="primary" data-action="add-host">Add host</button></div>`);
   return `<div class="grid2">${step1}${form}${detected}</div>`;
 }
@@ -322,6 +333,7 @@ async function addHost() {
   const { host: h, snapshot } = draft;
   if (!h || !snapshot) return;
   const host: Host = { id: h.id.trim(), name: h.name.trim(), ssh: h.ssh.trim(), parent: h.parent || null, role: h.role?.trim() || null };
+  if (h.monitor_min != null) host.monitor_min = Number(h.monitor_min);
   if (!host.id || !host.name || !host.ssh) return toast("ID, name and SSH target are required", true);
   try {
     await api.addHost(host, snapshot);
@@ -341,8 +353,8 @@ function settings() {
     <div class="grid2">
       ${card("General", `
         <label class="field">Docs folder (markdown export)<input id="docs_dir" value="${esc(config.docs_dir ?? "")}"></label>
-        <label class="field">Auto-scan interval
-          <select id="interval">${[0, 15, 30, 60, 180, 720, 1440].map((m) => `<option value="${m}" ${config.scan_interval_min === m ? "selected" : ""}>${m === 0 ? "Manual only" : m < 60 ? `${m} min` : `${m / 60} h`}</option>`).join("")}</select>
+        <label class="field">Default monitor interval <span class="muted small">(hosts can override)</span>
+          <select id="interval">${[0, ...MONITOR_OPTIONS, 180, 720, 1440].map((m) => `<option value="${m}" ${config.scan_interval_min === m ? "selected" : ""}>${m === 0 ? "Manual only" : minLabel(m)}</option>`).join("")}</select>
         </label>
         <label class="field">Snapshots kept per host<input id="keep" type="number" min="2" value="${config.keep_snapshots}"></label>`)}
       ${card("Data", `
@@ -352,7 +364,7 @@ function settings() {
         <p class="small muted">Version ${esc(version)}. Checks GitHub releases on launch and every 6 h.</p>
         ${update ? `<button class="primary" data-action="install-update" ${progress ? "disabled" : ""}>${progress ?? `Install ${esc(update.version)} &amp; restart`}</button>` : `<button data-action="check-update">Check for updates</button>`}`)}
       ${card("Hosts", `
-        <p class="small muted">JSON array. Fields: <code>id</code>, <code>name</code>, <code>ssh</code> (alias or user@host), optional <code>parent</code> (host id), <code>role</code>.</p>
+        <p class="small muted">JSON array. Fields: <code>id</code>, <code>name</code>, <code>ssh</code> (alias or user@host), optional <code>parent</code> (host id), <code>role</code>, <code>monitor_min</code> (0 = off).</p>
         <textarea id="hosts" class="code" spellcheck="false">${esc(JSON.stringify(config.hosts, null, 2))}</textarea>`, "wide")}
     </div>
     <div class="actions right"><button class="primary" data-action="save-settings">Save settings</button></div>`;
@@ -360,26 +372,49 @@ function settings() {
 
 // ---------- actions ----------
 
-async function scan(id: string) {
+/** Monitored scans fail quietly; the host shows the error banner. */
+async function scan(id: string, quiet = false) {
   if (scanning.has(id)) return;
   scanning.add(id);
-  render();
+  lastScan[id] = Date.now() / 1000;
+  quiet ? softRender() : render();
   try {
     await api.scanHost(id);
   } catch (e) {
-    toast(`${config.hosts.find((h) => h.id === id)?.name}: ${e}`, true);
+    if (!quiet) toast(`${config.hosts.find((h) => h.id === id)?.name}: ${e}`, true);
   } finally {
     scanning.delete(id);
     state = await api.loadState();
-    render();
+    quiet ? softRender() : render();
   }
 }
 
 const scanAll = () => Promise.allSettled(config.hosts.map((h) => scan(h.id)));
 
-function setupAutoScan() {
-  clearInterval(autoTimer);
-  if (config.scan_interval_min > 0) autoTimer = window.setInterval(scanAll, config.scan_interval_min * 60_000);
+/** Scan every monitored host whose interval has elapsed. Before the first local attempt, uses the last stored scan/error. */
+function monitorTick() {
+  const now = Date.now() / 1000;
+  for (const h of config.hosts) {
+    const m = monitorMin(h);
+    if (!m) continue;
+    const st = state[h.id];
+    const last = lastScan[h.id] ?? Math.min(now, Math.max(st?.latest?.collected_at ?? 0, st?.error?.at ?? 0));
+    if (now - last >= m * 60) scan(h.id, true);
+  }
+}
+
+async function setMonitor(id: string, value: string) {
+  const hosts = config.hosts.map((h) => {
+    if (h.id !== id) return h;
+    const { monitor_min: _, ...rest } = h;
+    return value === "" ? rest : { ...rest, monitor_min: Number(value) };
+  });
+  try {
+    await api.saveConfig({ ...config, hosts });
+    config = { ...config, hosts };
+    monitorTick();
+    render();
+  } catch (e) { toast(String(e), true); }
 }
 
 async function checkUpdate(manual = false) {
@@ -456,7 +491,7 @@ document.addEventListener("click", async (e) => {
         await api.saveConfig(next);
         config = next;
         state = await api.loadState();
-        setupAutoScan();
+        monitorTick();
         toast("Settings saved");
         render();
       } catch (err) { toast(`Invalid settings: ${err instanceof Error ? err.message : err}`, true); }
@@ -470,6 +505,7 @@ document.addEventListener("change", async (e) => {
     (draft.host as any)[el.dataset.host] = el.value || null;
     return;
   }
+  if (el.dataset.action === "monitor") return setMonitor(el.dataset.id!, el.value);
   if (el.dataset.action !== "compare") return;
   const id = el.dataset.id!;
   const ts = el.value ? Number(el.value) : undefined;
@@ -495,17 +531,21 @@ document.addEventListener("input", (e) => {
   notesTimer = window.setTimeout(() => api.saveNotes(notes).catch((err) => toast(String(err), true)), 600);
 });
 
-// Refresh relative timestamps without clobbering focused inputs.
-setInterval(() => {
+/** Re-render unless the user is editing a field (background scans, timestamp refresh). */
+function softRender() {
   const a = document.activeElement;
   if (!(a instanceof HTMLTextAreaElement || a instanceof HTMLInputElement || a instanceof HTMLSelectElement)) render();
-}, 60_000);
+}
+
+// Refresh relative timestamps without clobbering focused inputs.
+setInterval(softRender, 60_000);
 
 (async () => {
   try {
     [config, state, notes] = await Promise.all([api.getConfig(), api.loadState(), api.getNotes()]);
-    setupAutoScan();
     render();
+    monitorTick();
+    setInterval(monitorTick, 30_000);
     version = await getVersion().catch(() => "");
     checkUpdate();
     setInterval(checkUpdate, 6 * 3600_000);

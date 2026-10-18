@@ -8,12 +8,12 @@ Small Tauri v2 desktop app (~3MB) that inventories homelab/VPS hosts over SSH an
 - Each scan is saved as a JSON snapshot in SQLite (`~/.infratracker/infra.db`: tables `snapshots(host, ts, data)`, `scan_errors`, `notes`). Query with e.g. `sqlite3 infra.db "select host, ts, json_extract(data,'$.kernel') from snapshots"`. Host list/settings stay in `~/.infratracker/config.json`. Files from the old `~/Library/Application Support/dev.dufflebear.infratracker/` dir are moved over on first launch. Old `snapshots/` + `notes.json` are imported on first launch and renamed `*.imported`.
 - UI computes **findings** (rules in `src/analyze.ts`) and **changes** vs previous/any older snapshot.
 - Per-host notes; **Export markdown** writes `INVENTORY.md` to the docs folder (default `~/Code/Infrastructure`).
-- Optional auto-scan interval (while app is open).
+- **Monitoring** (while app is open): per-host interval (Off / 5 / 10 / 15 / 30 / 60 min) in the host header or add-host form, stored as `monitor_min`; hosts without one use the default interval in Settings. Due hosts are rescanned in the background; failures show as the host's error banner instead of toasts.
 
 ## Hosts
 **+ Add host** (sidebar): enter IP/hostname/alias (+ optional ssh user) → app scans it → name, id, parent (matched against Proxmox guest IPs/names), role prefilled → edit → add. First scan saved as initial snapshot. New host keys trusted on first use (`StrictHostKeyChecking=accept-new`, probe only).
 
-Or edit in Settings (JSON). Fields: `id`, `name`, `ssh` (alias or `user@host`), optional `parent` (host id, for VM nesting) and `role`.
+Or edit in Settings (JSON). Fields: `id`, `name`, `ssh` (alias or `user@host`), optional `parent` (host id, for VM nesting), `role` and `monitor_min` (minutes, 0 = off).
 Requirements per host: key-based ssh, plus root or passwordless sudo (Linux/macOS) or an admin account with OpenSSH server (Windows).
 
 Coverage: Linux is full (systemd, apt, ufw/nftables, SMART via smartctl, Proxmox). macOS: launchd jobs, softwareupdate, Application Firewall, diskutil SMART. Windows: services, firewall profiles, Windows Update (last scan), disk health; load is approximated from CPU %. Docker and Tailscale everywhere.

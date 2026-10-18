@@ -21,6 +21,9 @@ struct Host {
     parent: Option<String>,
     #[serde(default)]
     role: Option<String>,
+    /// Monitoring interval in minutes; None = use `scan_interval_min`, 0 = off
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    monitor_min: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -28,7 +31,7 @@ struct Config {
     hosts: Vec<Host>,
     #[serde(default)]
     docs_dir: Option<String>,
-    /// 0 = manual only
+    /// Default monitoring interval for hosts without `monitor_min`; 0 = manual only
     #[serde(default)]
     scan_interval_min: u32,
     #[serde(default = "default_keep")]

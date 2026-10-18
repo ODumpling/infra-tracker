@@ -49,6 +49,8 @@ h1 { font-size: 18px; margin: 0; }
 .content { overflow: auto; padding: 18px 22px 40px; flex: 1; }
 
 .hosthead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.hosthead .monitor { margin-left: auto; margin-right: 10px; display: flex; align-items: center; gap: 6px; }
+.hosthead .monitor select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
 .banner { padding: 8px 12px; border-radius: 6px; margin-bottom: 14px; }
 .banner.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 .banner.crit { background: color-mix(in srgb, var(--crit) 14%, transparent); color: var(--crit); }

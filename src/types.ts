@@ -4,6 +4,8 @@ export interface Host {
   ssh: string;
   parent?: string | null;
   role?: string | null;
+  /** Monitoring interval (min); null/undefined = global default, 0 = off. */
+  monitor_min?: number | null;
 }
 
 export interface Config {
